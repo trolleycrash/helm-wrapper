@@ -1,6 +1,7 @@
 package main
 
 import (
+	"helm.sh/helm/v3/pkg/registry"
 	"os"
 
 	"github.com/golang/glog"
@@ -45,6 +46,14 @@ func actionConfigInit(kubeInfo *KubeInformation) (*action.Configuration, error) 
 		glog.Errorf("%+v", err)
 		return nil, err
 	}
+
+	client, err := registry.NewClient()
+	if err != nil {
+		glog.Errorf("%+v", err)
+		return nil, err
+	}
+
+	actionConfig.RegistryClient = client
 
 	return actionConfig, nil
 }
