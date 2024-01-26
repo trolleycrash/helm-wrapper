@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/golang/glog"
 	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -122,7 +124,7 @@ type releaseListOptions struct {
 	Pending      bool   `json:"pending"`
 }
 
-func formatChartname(c *chart.Chart) string {
+func formatChartName(c *chart.Chart) string {
 	if c == nil || c.Metadata == nil {
 		// This is an edge case that has happened in prod, though we don't
 		// know how: https://github.com/helm/helm/issues/1347
@@ -138,6 +140,10 @@ func formatAppVersion(c *chart.Chart) string {
 		return "MISSING"
 	}
 	return c.AppVersion()
+}
+
+func formatReleaseName(n string) string {
+	return clearString(n)
 }
 
 func mergeValues(options releaseOptions) (map[string]interface{}, error) {
@@ -163,13 +169,18 @@ func mergeValues(options releaseOptions) (map[string]interface{}, error) {
 		}
 	}
 
+	if vals["uuid"] != nil {
+		// KLUDGE: strip non-alphanumeric characters from uuids
+		vals["uuid"] = clearString(vals["uuid"].(string))
+	}
+
 	return vals, nil
 }
 
 func getReleaseHistory(rls []*release.Release) (history releaseHistory) {
 	for i := len(rls) - 1; i >= 0; i-- {
 		r := rls[i]
-		c := formatChartname(r.Chart)
+		c := formatChartName(r.Chart)
 		s := r.Info.Status.String()
 		v := r.Version
 		d := r.Info.Description
@@ -224,7 +235,7 @@ func isChartInstallable(ch *chart.Chart) (bool, error) {
 }
 
 func showReleaseInfo(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	info := c.Query("info")
 	kubeConfig := c.Query("kube_config")
@@ -301,7 +312,7 @@ func showReleaseInfo(c *gin.Context) {
 }
 
 func installRelease(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	aimChart := c.Query("chart")
 	kubeContext := c.Query("kube_context")
@@ -419,6 +430,8 @@ func runInstall(name, namespace, kubeContext, aimChart, kubeConfig string, optio
 		}
 	}
 
+	glog.Infoln(vals)
+
 	_, err = client.Run(chartRequested, vals)
 	if err != nil {
 		return
@@ -428,7 +441,7 @@ func runInstall(name, namespace, kubeContext, aimChart, kubeConfig string, optio
 }
 
 func uninstallRelease(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	kubeContext := c.Query("kube_context")
 	kubeConfig := c.Query("kube_config")
@@ -449,7 +462,7 @@ func uninstallRelease(c *gin.Context) {
 }
 
 func rollbackRelease(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	reversionStr := c.Param("reversion")
 	kubeContext := c.Query("kube_context")
@@ -501,7 +514,7 @@ func rollbackRelease(c *gin.Context) {
 }
 
 func upgradeRelease(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	aimChart := c.Query("chart")
 	kubeContext := c.Query("kube_context")
@@ -671,7 +684,7 @@ func listReleases(c *gin.Context) {
 }
 
 func getReleaseStatus(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	kubeContext := c.Query("kube_context")
 	kubeConfig := c.Query("kube_config")
@@ -694,7 +707,7 @@ func getReleaseStatus(c *gin.Context) {
 }
 
 func listReleaseHistories(c *gin.Context) {
-	name := c.Param("release")
+	name := formatReleaseName(c.Param("release"))
 	namespace := c.Param("namespace")
 	kubeContext := c.Query("kube_context")
 	kubeConfig := c.Query("kube_config")
@@ -738,4 +751,10 @@ func readValues(filePath string) ([]byte, error) {
 	}
 
 	return data.Bytes(), nil
+}
+
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9 ]+`)
+
+func clearString(str string) string {
+	return nonAlphanumericRegex.ReplaceAllString(str, "")
 }
