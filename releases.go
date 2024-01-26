@@ -143,7 +143,7 @@ func formatAppVersion(c *chart.Chart) string {
 }
 
 func formatReleaseName(n string) string {
-	return clearString(n)
+	return n
 }
 
 func mergeValues(options releaseOptions) (map[string]interface{}, error) {
